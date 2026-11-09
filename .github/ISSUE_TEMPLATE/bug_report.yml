@@ -1,0 +1,77 @@
+name: Bug report
+description: Something does not work in win (the app, JIT, or a program).
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please say which program, and attach the log: problems that only
+        happen on the iPhone belong here.
+  - type: input
+    id: device
+    attributes:
+      label: iPhone model
+      placeholder: iPhone 16 Pro Max
+    validations:
+      required: true
+  - type: input
+    id: ios
+    attributes:
+      label: iOS version
+      placeholder: "26.6"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: The release you installed.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How the app was installed, and how JIT is enabled
+      options:
+        - iloader, JIT from the app (LocalDevVPN)
+        - SideStore, JIT from the app (LocalDevVPN)
+        - AltStore or Sideloadly, JIT from the app (LocalDevVPN)
+        - JIT from StikDebug
+        - Other (say below)
+    validations:
+      required: true
+  - type: input
+    id: program
+    attributes:
+      label: Program, with its version
+      description: Leave empty if the problem is not about a program.
+      placeholder: Some Game 1.2 (64-bit, Direct3D 11)
+  - type: dropdown
+    id: resolution
+    attributes:
+      label: Resolution
+      description: Programs › Resolution.
+      options:
+        - Fills the screen (default)
+        - 960 × 540
+        - 1280 × 720
+        - 1600 × 900
+        - 1920 × 1080
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happens
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: madeira-log.txt
+      description: |
+        Right after the problem, close win, open it again and tap **Share Log** in Programs. It is
+        the log of the last program run, so share it before you start another. Attach the file
+        here by dragging it in.
+    validations:
+      required: true
