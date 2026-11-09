@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Keys Xcode has no build setting for; merged into the generated Info.plist.
+     CADisableMinimumFrameDurationOnPhone lets the game present above 60 Hz on
+     ProMotion iPhones (Madeira's own app sets it too). -->
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+</dict>
+</plist>

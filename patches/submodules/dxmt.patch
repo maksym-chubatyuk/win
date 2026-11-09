@@ -1,0 +1,900 @@
+Changes to Madeira's DXMT (third_party/madeira/dxmt). Applied by scripts/apply-patches.sh.
+
+- src/airconv: no reassociation in shaders by default. LLVM turned a soft shadow's
+  pow((36 - sum) / 36, 2.2) into an fma that left a tiny negative, so log2 gave NaN and the
+  shadows went black. DXMT_PRECISE_MATH (1 all, 2 flags only, 4 math functions only) and
+  DXMT_FAST_REASSOC=1 choose otherwise; the shader cache file is now *_win2.db
+  (src/winemetal/unix/cache.c). The tessellation shader always uses the 4-argument barrier.
+- src/dxmt/dxmt_dynamic.cpp: a dynamic buffer keeps as many renames as are in flight instead
+  of trimming to 64, and walks its queue only with DXMT_DYN_STATS=1. Creating and freeing
+  Metal buffers was 28% of a game's main thread.
+- src/d3d9: an indexed draw stores only the index bytes it reads, not the whole buffer
+  (MADEIRA_D3D9_INDEX_RANGE=0 restores the old refresh).
+- src/dxmt/dxmt_mem_census: memory use by kind, logged now and then.
+
+diff --git a/src/airconv/nt/air_builder.cpp b/src/airconv/nt/air_builder.cpp
+index d9e26ca..aaebc39 100644
+--- a/src/airconv/nt/air_builder.cpp
++++ b/src/airconv/nt/air_builder.cpp
+@@ -1661,7 +1661,7 @@ AIRBuilder::CreateFPUnOp(FPUnOp Op, Value *Operand, bool FastVariant) {
+   auto OperandType = Operand->getType();
+ 
+   std::string FnName = "air.";
+-  if (FastVariant)
++  if (FastVariant && !airconv_precise_math())
+     FnName += "fast_";
+   FnName += FnNames[Op];
+   FnName += getTypeOverloadSuffix(OperandType);
+@@ -1691,7 +1691,7 @@ AIRBuilder::CreateFPBinOp(FPBinOp Op, Value *LHS, Value *RHS, bool FastVariant)
+   auto OperandType = LHS->getType();
+ 
+   std::string FnName = "air.";
+-  if (FastVariant)
++  if (FastVariant && !airconv_precise_math())
+     FnName += "fast_";
+   FnName += FnNames[Op];
+   FnName += getTypeOverloadSuffix(OperandType);
+diff --git a/src/airconv/nt/air_builder.hpp b/src/airconv/nt/air_builder.hpp
+index a5f7668..3a64f0d 100644
+--- a/src/airconv/nt/air_builder.hpp
++++ b/src/airconv/nt/air_builder.hpp
+@@ -1,11 +1,37 @@
+ 
+ #pragma once
++#include <cstdlib>
+ 
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/IR/Constants.h"
+ #include "llvm/IR/DerivedTypes.h"
+ #include "llvm/IR/IRBuilder.h"
+ 
++/* win: DXMT_PRECISE_MATH selects which fast-math shortcuts shaders are compiled without:
++ * 1 both, 2 only the reassociation/contraction flags, 4 only Metal's fast math
++ * functions (log2, exp2, rsqrt, ...). Used to tell a fast-math difference from a bug. */
++inline int
++airconv_precise_math_mode() {
++  static int mode = -1;
++  if (mode < 0) {
++    const char *e = getenv("DXMT_PRECISE_MATH");
++    mode = e ? atoi(e) : 0;
++    if (mode == 1)
++      mode = 6;
++  }
++  return mode;
++}
++
++inline bool
++airconv_precise_flags() {
++  return (airconv_precise_math_mode() & 2) != 0;
++}
++
++inline bool
++airconv_precise_math() {
++  return (airconv_precise_math_mode() & 4) != 0;
++}
++
+ namespace llvm::air {
+ 
+ struct sample_level {
+diff --git a/src/airconv/nt/dxbc_converter_base.cpp b/src/airconv/nt/dxbc_converter_base.cpp
+index 1cc24a1..f379825 100644
+--- a/src/airconv/nt/dxbc_converter_base.cpp
++++ b/src/airconv/nt/dxbc_converter_base.cpp
+@@ -3030,7 +3030,7 @@ Converter::CreateGEPInt32WithBoundCheck(AtomicBufferResourceHandle &Buffer, llvm
+ 
+ std::unique_ptr<llvm::IRBuilder<>::FastMathFlagGuard>
+ Converter::UseFastMath(bool OptOut) {
+-  if (OptOut)
++  if (OptOut || airconv_precise_flags())
+     return nullptr;
+   auto Guard = std::make_unique<llvm::IRBuilder<>::FastMathFlagGuard>(ir);
+   llvm::FastMathFlags FMF;
+@@ -3043,8 +3043,19 @@ Converter::UseFastMath(bool OptOut) {
+   */
+   if (ctx.shader_type == microsoft::D3D11_SB_COMPUTE_SHADER || ctx.shader_type == microsoft::D3D10_SB_PIXEL_SHADER) {
+     FMF.setAllowContract();
+-    FMF.setAllowReassoc();
+     FMF.setAllowReciprocal();
++    /* win: no reassociation by default. It lets LLVM distribute a multiply over an add,
++     * so Unigine's soft-shadow term pow((36 - sum) * (1/36), 2.2) became
++     * fma(-sum, 1/36, 36 * (1/36)): where every tap passed, the rounded constant left a
++     * tiny negative instead of 0, log2 made it NaN, and shadowed areas rendered black
++     * (Superposition, render_shadows_soft 1). D3D lets mad fuse, which contract still
++     * allows, but not this. DXMT_FAST_REASSOC=1 restores it. */
++    static const bool reassoc = [] {
++      const char *e = getenv("DXMT_FAST_REASSOC");
++      return e && e[0] == '1';
++    }();
++    if (reassoc)
++      FMF.setAllowReassoc();
+   }
+ 
+   FMF.setApproxFunc();
+diff --git a/src/airconv/shaders/air_tessellation.metal b/src/airconv/shaders/air_tessellation.metal
+index 56ba86e..b16dbd1 100644
+--- a/src/airconv/shaders/air_tessellation.metal
++++ b/src/airconv/shaders/air_tessellation.metal
+@@ -150,6 +150,9 @@ struct TessMeshWorkload {
+ 
+ int
+ get_next_index(threadgroup int *out_count) {
++  // win: always the 4-argument form. Metal compiler 32023.883 defines
++  // __METAL_MEMORY_FLAGS_NONE__ but still rejects a fifth argument. Naming that macro
++  // here also stops build-shader-headers.sh from re-applying its #ifdef.
+   return __metal_atomic_fetch_add_explicit(out_count, 1, int(memory_order_relaxed), __METAL_MEMORY_SCOPE_THREADGROUP__);
+ }
+ 
+diff --git a/src/d3d9/d3d9_buffer.cpp b/src/d3d9/d3d9_buffer.cpp
+index 565a69f..5c2fc19 100644
+--- a/src/d3d9/d3d9_buffer.cpp
++++ b/src/d3d9/d3d9_buffer.cpp
+@@ -10,6 +10,8 @@
+ #include "d3d9_census.hpp"
+ #include "util_env.hpp"
+ 
++#include <algorithm>
++#include <cstdint>
+ #include <cstring>
+ 
+ namespace dxmt {
+@@ -66,6 +68,37 @@ wantsDirectMap(MTLD3D9Device *device, D3DPOOL pool, DWORD usage) {
+   return directMapEnabled() && pool == D3DPOOL_DEFAULT && (usage & D3DUSAGE_DYNAMIC) && !device->canOnlySWVP();
+ }
+ 
++// MTLD3D9IndexBuffer::refreshRange: an indexed draw stores only the index bytes
++// it reads. MADEIRA_D3D9_INDEX_RANGE=0 keeps the whole-buffer refresh before
++// every draw. Read once.
++bool
++indexRangeEnabled() {
++  static const bool enabled = env::getEnvVar("MADEIRA_D3D9_INDEX_RANGE") != "0";
++  return enabled;
++}
++
++// What refreshRange saved, logged now and then so a session log shows it.
++// Calling thread under the device lock; a second device only mixes its counts in.
++struct IndexRangeStats {
++  uint64_t stores = 0, stored = 0, whole = 0, renames = 0;
++};
++
++void
++noteIndexRangeStore(IndexRangeStats &stats, uint64_t stored, uint64_t whole) {
++  ++stats.stores;
++  stats.stored += stored;
++  stats.whole += whole;
++  if (stats.stores != 1 && stats.stores != 4096 && (stats.stores & ((1u << 18) - 1)) != 0)
++    return;
++  Logger::info(
++      "[d3d9-index-range] " + std::to_string(stats.stores) + " index stores, " + std::to_string(stats.stored >> 10) +
++      " KB stored where the whole-buffer refresh would have stored " + std::to_string(stats.whole >> 10) + " KB, " +
++      std::to_string(stats.renames) + " renames (MADEIRA_D3D9_INDEX_RANGE=0 restores the whole-buffer refresh)"
++  );
++}
++
++IndexRangeStats g_indexRangeStats;
++
+ // A direct-mapped buffer's allocations keep the default CPU cache mode rather
+ // than write-combined: the application may read what it locked, and
+ // ProcessVertices and the strip and fan index scans read it too
+@@ -531,6 +564,122 @@ MTLD3D9IndexBuffer::refreshWholeMirror() {
+   m_dirty = m_writeLocked;
+ }
+ 
++bool
++MTLD3D9IndexBuffer::renameBeforeStore() {
++  // refreshWholeMirror's rename and its madeira-bcd out-of-memory fallback, the
++  // same steps in the same order: wait for the GPU and try again, and with
++  // nothing to recycle store into the current generation, which no unfinished
++  // draw reads once the GPU is idle.
++  if (SUCCEEDED(renameDynamicBuffer(
++          m_device, m_dynamic.ptr(), m_device->m_currentCmdSeq,
++          m_device->m_cachedSignaled.load(std::memory_order_acquire)
++      )))
++    return true;
++  if (m_device->drainForDynamicRename()) {
++    if (FAILED(renameDynamicBuffer(
++            m_device, m_dynamic.ptr(), m_device->m_currentCmdSeq,
++            m_device->m_cachedSignaled.load(std::memory_order_acquire)
++        )))
++      m_device->noteRenameInPlace();
++    return true;
++  }
++  static bool warned = false;
++  if (!warned) {
++    warned = true;
++    Logger::warn("d3d9: out of video memory refreshing a dynamic buffer; the draw reads stale contents");
++  }
++  return false;
++}
++
++// refreshWholeMirror stores the whole mirror before every draw that follows a
++// write lock, and before every draw while a lock is held. An engine that keeps
++// one large index buffer mapped while it draws from it, or locks a little of it
++// before each draw, then copies the whole buffer per draw: a Call of Duty
++// engine's render thread spent nearly all its time in that copy (memmove under
++// refreshWholeMirror) on an A19 Pro, at 12-20 fps with the GPU 22% busy.
++//
++// An indexed draw reads exactly its StartIndex .. StartIndex + count indices,
++// so only those bytes have to be current when it is recorded. What keeps this
++// as safe as the whole-buffer refresh:
++// - The range comes from the draw, never from the window a lock announced, so
++//   a write past a lock's window still reaches the draw that reads it.
++// - A write lock makes every byte of the current allocation suspect (Lock), so
++//   each later draw stores its own range from the mirror again, and while a
++//   lock is held every draw does: the application may write at any time.
++// - A store goes into the allocation earlier draws were recorded against only
++//   while every write lock since that allocation was installed carried
++//   NOOVERWRITE. The application then promises not to change the bytes those
++//   draws read, so the store rewrites them with the values they already hold,
++//   which is what a draw on Windows reads from a directly mapped buffer. After
++//   any other write lock (plain or DISCARD) the store renames first, and for as
++//   long as such a lock is held every store does, so the recorded draws keep
++//   the contents they were recorded with.
++// - The bytes known to be current are one interval, grown together with the
++//   gap to a new range when the gap is no larger than that range, so between
++//   two write locks no byte is stored twice and a draw whose range is current
++//   stores nothing.
++void
++MTLD3D9IndexBuffer::refreshRange(UINT begin, UINT end) {
++  if (!indexRangeEnabled()) {
++    refreshWholeMirror();
++    return;
++  }
++  if (!m_dirty || m_direct || !m_hostPtr)
++    return;
++  end = std::min(end, m_size);
++  if (begin >= end)
++    return;
++  if (!m_writeLocked && begin >= m_currentBegin && end <= m_currentEnd)
++    return;
++  if (m_renameDue) {
++    if (!renameBeforeStore())
++      return;
++    ++g_indexRangeStats.renames;
++    // While a lock without NOOVERWRITE is held, the application may still
++    // change the bytes this draw reads, so the next store renames again: each
++    // draw keeps its own copy, as with refreshWholeMirror.
++    m_renameDue = m_renameEachStore;
++    m_currentBegin = m_currentEnd = 0;
++  }
++  // The bytes to store: the new range, plus the gap to the current interval
++  // when that keeps it one piece, minus what is current already.
++  UINT lo = begin, hi = end;
++  bool grow = m_currentBegin < m_currentEnd && !m_writeLocked;
++  if (grow) {
++    const UINT gap = begin > m_currentEnd ? begin - m_currentEnd : (m_currentBegin > end ? m_currentBegin - end : 0);
++    grow = gap <= end - begin;
++  }
++  const uint32_t sub = m_dynamic->immediateSuballocation();
++  const char *mirror = static_cast<const char *>(m_hostPtr);
++  uint64_t stored = 0;
++  if (grow) {
++    lo = std::min(begin, m_currentBegin);
++    hi = std::max(end, m_currentEnd);
++    if (lo < m_currentBegin) {
++      m_dynamic->immediateName()->updateContents(lo, mirror + lo, m_currentBegin - lo, sub);
++      stored += m_currentBegin - lo;
++    }
++    if (hi > m_currentEnd) {
++      m_dynamic->immediateName()->updateContents(m_currentEnd, mirror + m_currentEnd, hi - m_currentEnd, sub);
++      stored += hi - m_currentEnd;
++    }
++  } else {
++    m_dynamic->immediateName()->updateContents(begin, mirror + begin, end - begin, sub);
++    stored = end - begin;
++  }
++  noteIndexRangeStore(g_indexRangeStats, stored, m_size);
++  // Still mapped: nothing is current past this draw (see m_writeLocked). Else
++  // keep the larger of the two intervals when they did not join.
++  if (m_writeLocked)
++    return;
++  if (grow || hi - lo >= m_currentEnd - m_currentBegin) {
++    m_currentBegin = lo;
++    m_currentEnd = hi;
++  }
++  if (m_currentBegin == 0 && m_currentEnd == m_size)
++    m_dirty = false;
++}
++
+ void
+ MTLD3D9IndexBuffer::markLosable() {
+   if (!m_isLosable) {
+@@ -681,6 +830,14 @@ MTLD3D9IndexBuffer::Lock(UINT OffsetToLock, UINT SizeToLock, void **ppbData, DWO
+   if (buffer_lock_updates_dirty(Flags)) {
+     m_dirty = true;
+     m_writeLocked = true;
++    // refreshRange: so no byte of the current allocation is known to be current
++    // any more. Only a lock without NOOVERWRITE (after sanitisation, every lock
++    // outside the DEFAULT pool) allows changing bytes a recorded draw reads.
++    m_currentBegin = m_currentEnd = 0;
++    if (!(Flags & D3DLOCK_NOOVERWRITE)) {
++      m_renameDue = true;
++      m_renameEachStore = true;
++    }
+   }
+   m_lockCount.increment();
+   *ppbData = static_cast<char *>(m_hostPtr) + OffsetToLock;
+@@ -692,8 +849,11 @@ MTLD3D9IndexBuffer::Unlock() {
+   D3D9_CENSUS(D3D9_CENSUS_MTLD3D9IndexBuffer_Unlock);
+   D9DeviceLock lock = m_device->LockDevice();
+   // See MTLD3D9VertexBuffer::Unlock: the draw refreshes, not this.
+-  if (m_lockCount.decrement() == 0)
++  if (m_lockCount.decrement() == 0) {
+     m_writeLocked = false;
++    // refreshRange: no lock without NOOVERWRITE is held any more.
++    m_renameEachStore = false;
++  }
+   return D3D_OK;
+ }
+ 
+diff --git a/src/d3d9/d3d9_buffer.hpp b/src/d3d9/d3d9_buffer.hpp
+index 62bd9f3..28a164d 100644
+--- a/src/d3d9/d3d9_buffer.hpp
++++ b/src/d3d9/d3d9_buffer.hpp
+@@ -211,6 +211,11 @@ public:
+     return m_dirty;
+   }
+   void refreshWholeMirror();
++  // Bring only the bytes [begin, end) of the current allocation up to date: the
++  // index range one draw reads (DrawIndexedPrimitive's StartIndex and index
++  // count). An empty range stores nothing. See the definition for why this is
++  // as safe as refreshWholeMirror; MADEIRA_D3D9_INDEX_RANGE=0 makes it one.
++  void refreshRange(UINT begin, UINT end);
+   // Host-mapped pointer to the current index data: the allocation draws read
+   // when the buffer is direct-mapped, else the host mirror, which is then
+   // authoritative. The index fan-remap path in d3d9_device.cpp reads the
+@@ -247,6 +252,20 @@ private:
+   // then leave every later write unpublished. While this is set, a refresh
+   // re-uploads unconditionally.
+   bool m_writeLocked = false;
++  // refreshRange only. A write lock without NOOVERWRITE since the current
++  // allocation was installed: the application may then have changed bytes a
++  // recorded draw reads, so the next store renames first.
++  bool m_renameDue = false;
++  // refreshRange only. Such a lock is still held, so every store renames.
++  bool m_renameEachStore = false;
++  // refreshRange only. The bytes of the current allocation known to equal the
++  // mirror, [m_currentBegin, m_currentEnd); empty after every write lock, since
++  // which bytes the application writes is not known.
++  UINT m_currentBegin = 0;
++  UINT m_currentEnd = 0;
++  // refreshWholeMirror's rename with its out-of-memory fallback, for
++  // refreshRange: false when the store has to be skipped.
++  bool renameBeforeStore();
+   // See MTLD3D9VertexBuffer::m_direct.
+   bool m_direct = false;
+   D3D9BufferLockCount m_lockCount;
+diff --git a/src/d3d9/d3d9_device.cpp b/src/d3d9/d3d9_device.cpp
+index 59295f1..6da7305 100644
+--- a/src/d3d9/d3d9_device.cpp
++++ b/src/d3d9/d3d9_device.cpp
+@@ -7448,7 +7448,7 @@ MTLD3D9Device::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, U
+     if (ib_handle == 0)
+       return D3D_OK;
+     BatchedDraw draw{};
+-    draw.cap = BuildDrawCapture();
++    draw.cap = BuildDrawCapture(0, 0);
+     draw.type = BatchedDraw::kIndexed;
+     draw.primitive_type = D3DPT_TRIANGLELIST;
+     draw.vertex_or_index_count = PrimitiveCount * 3;
+@@ -7462,7 +7462,7 @@ MTLD3D9Device::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, U
+   }
+   UINT vertex_count = prim_to_vertex_count(PrimitiveType, PrimitiveCount);
+   BatchedDraw draw{};
+-  draw.cap = BuildDrawCapture();
++  draw.cap = BuildDrawCapture(0, 0);
+   draw.type = BatchedDraw::kNonIndexed;
+   draw.primitive_type = PrimitiveType;
+   draw.vertex_or_index_count = vertex_count;
+@@ -7526,7 +7526,7 @@ MTLD3D9Device::DrawIndexedPrimitive(
+     if (ib_handle == 0)
+       return D3D_OK;
+     BatchedDraw draw{};
+-    draw.cap = BuildDrawCapture();
++    draw.cap = BuildDrawCapture(0, 0);
+     draw.type = BatchedDraw::kIndexed;
+     draw.primitive_type = D3DPT_TRIANGLELIST;
+     draw.vertex_or_index_count = fan_prim_count * 3;
+@@ -7572,7 +7572,7 @@ MTLD3D9Device::DrawIndexedPrimitive(
+         if (ib_handle == 0)
+           return D3D_OK;
+         BatchedDraw draw{};
+-        draw.cap = BuildDrawCapture();
++        draw.cap = BuildDrawCapture(0, 0);
+         draw.type = BatchedDraw::kIndexed;
+         draw.primitive_type = PrimitiveType;
+         draw.vertex_or_index_count = strip_count;
+@@ -7586,8 +7586,14 @@ MTLD3D9Device::DrawIndexedPrimitive(
+     }
+   }
+   UINT index_count = prim_to_vertex_count(PrimitiveType, PrimitiveCount);
++  // The bytes of the bound index buffer this draw reads, clamped to the buffer
++  // (MTLD3D9IndexBuffer::refreshRange); the GPU reads nothing else of it.
++  const uint64_t ib_index_size = m_indexBuffer->indexFormat() == D3DFMT_INDEX32 ? 4u : 2u;
++  const uint64_t ib_size = m_indexBuffer->size();
++  const uint64_t ib_begin = std::min<uint64_t>(uint64_t(StartIndex) * ib_index_size, ib_size);
++  const uint64_t ib_end = std::min<uint64_t>(ib_begin + uint64_t(index_count) * ib_index_size, ib_size);
+   BatchedDraw draw{};
+-  draw.cap = BuildDrawCapture();
++  draw.cap = BuildDrawCapture(static_cast<UINT>(ib_begin), static_cast<UINT>(ib_end));
+   draw.type = BatchedDraw::kIndexed;
+   draw.primitive_type = PrimitiveType;
+   draw.vertex_or_index_count = index_count;
+@@ -7602,7 +7608,7 @@ MTLD3D9Device::DrawIndexedPrimitive(
+ // Validation gate reads from capture (caller-provided or UP-built at queue time).
+ // UP build at queue time ensures validation sees shader/RT bindings from draw thread, not FlushDrawBatch thread.
+ MTLD3D9Device::D3D9DrawCapture
+-MTLD3D9Device::BuildDrawCapture() {
++MTLD3D9Device::BuildDrawCapture(UINT ib_begin, UINT ib_end) {
+   // Bring every bound buffer's device copy up to date before the record timer
+   // starts. The refresh charges itself to the staging axis, so timing it here as
+   // well would count it on two axes that the frontend total adds together, and
+@@ -7614,8 +7620,14 @@ MTLD3D9Device::BuildDrawCapture() {
+     if (auto *vb = m_vertexBuffers[s].ptr())
+       vb->refreshWholeMirror();
+   }
+-  if (m_indexBuffer.ptr() != nullptr)
+-    m_indexBuffer->refreshWholeMirror();
++  // The index buffer stores only the bytes the draw reads, nothing for a draw
++  // that reads none of it (the declaration's comment).
++  if (m_indexBuffer.ptr() != nullptr) {
++    if (ib_begin == 0 && ib_end == UINT_MAX)
++      m_indexBuffer->refreshWholeMirror();
++    else
++      m_indexBuffer->refreshRange(ib_begin, ib_end);
++  }
+ 
+   // POD state read by Resolve from D9EncodingState; setter-flush invariant ensures batch shares one snapshot.
+   // Ref-counted state via setter ops into m_encodeSideRefs.
+@@ -11366,7 +11378,7 @@ MTLD3D9Device::DrawPrimitiveUP(
+     if (ib_handle == 0)
+       return D3D_OK;
+     BatchedDraw draw{};
+-    draw.cap = BuildDrawCapture();
++    draw.cap = BuildDrawCapture(0, 0);
+     draw.type = BatchedDraw::kIndexed;
+     draw.primitive_type = D3DPT_TRIANGLELIST;
+     draw.vertex_or_index_count = PrimitiveCount * 3;
+@@ -11384,7 +11396,7 @@ MTLD3D9Device::DrawPrimitiveUP(
+   }
+ 
+   BatchedDraw draw{};
+-  draw.cap = BuildDrawCapture();
++  draw.cap = BuildDrawCapture(0, 0);
+   draw.type = BatchedDraw::kNonIndexed;
+   draw.primitive_type = PrimitiveType;
+   draw.vertex_or_index_count = vertex_count;
+@@ -11483,7 +11495,7 @@ MTLD3D9Device::DrawIndexedPrimitiveUP(
+     if (ib_handle == 0)
+       return D3D_OK;
+     BatchedDraw draw{};
+-    draw.cap = BuildDrawCapture();
++    draw.cap = BuildDrawCapture(0, 0);
+     draw.type = BatchedDraw::kIndexed;
+     draw.primitive_type = D3DPT_TRIANGLELIST;
+     draw.vertex_or_index_count = PrimitiveCount * 3;
+@@ -11527,7 +11539,7 @@ MTLD3D9Device::DrawIndexedPrimitiveUP(
+   }
+ 
+   BatchedDraw draw{};
+-  draw.cap = BuildDrawCapture();
++  draw.cap = BuildDrawCapture(0, 0);
+   draw.type = BatchedDraw::kIndexed;
+   draw.primitive_type = PrimitiveType;
+   draw.vertex_or_index_count = index_count;
+diff --git a/src/d3d9/d3d9_device.hpp b/src/d3d9/d3d9_device.hpp
+index 1fdd62a..ca4d316 100644
+--- a/src/d3d9/d3d9_device.hpp
++++ b/src/d3d9/d3d9_device.hpp
+@@ -1079,7 +1079,11 @@ private:
+   // currentOffset snapshot at queue time).
+   // Ref-counted state travels via setters to D9EncodingState on encode thread;
+   // override_* args are per-call, not device state.
+-  D3D9DrawCapture BuildDrawCapture();
++  // [ib_begin, ib_end) is the byte range of the bound index buffer the draw
++  // reads (MTLD3D9IndexBuffer::refreshRange): an empty range for a draw that
++  // reads none (non-indexed, or with an index buffer of its own); the default
++  // refreshes the whole buffer, as every draw did before.
++  D3D9DrawCapture BuildDrawCapture(UINT ib_begin = 0, UINT ib_end = UINT_MAX);
+ 
+   // Op-stream queue helpers. QueueBatchedDraw appends to m_pendingDraws
+   // *and* records its position in m_pendingOps; QueueBlitOp does the
+diff --git a/src/dxmt/dxmt_buffer.cpp b/src/dxmt/dxmt_buffer.cpp
+index c3140f3..21ed820 100644
+--- a/src/dxmt/dxmt_buffer.cpp
++++ b/src/dxmt/dxmt_buffer.cpp
+@@ -196,6 +196,7 @@ Buffer::allocate(Flags<BufferAllocationFlag> flags, const char *site) {
+   {
+     auto *ba = new BufferAllocation(device_, info, flags);
+     ba->census_site_ = site;                       /* ml683 */
++    alloc_stat(site, ba->census_bytes_);
+     buf_site_add((uint64_t)(uintptr_t)site, ba->census_bytes_);
+     return ba;
+   }
+diff --git a/src/dxmt/dxmt_dynamic.cpp b/src/dxmt/dxmt_dynamic.cpp
+index a8e0e1d..2b30cd0 100644
+--- a/src/dxmt/dxmt_dynamic.cpp
++++ b/src/dxmt/dxmt_dynamic.cpp
+@@ -11,12 +11,14 @@ namespace dxmt {
+ 
+ /* DXMT_DYN_KEEP = <entries>, default unset/0 = off.
+  *
+- * Off, a DynamicBuffer keeps at most DYN_KEEP_ELIGIBLE (64) retired names. A constant
+- * buffer that the game renames once per draw (Dark Souls III: ~600 draws a frame)
+- * retires ~600 names a frame; as soon as the GPU catches up, the trim below frees all
+- * but 64, and the next frame mints ~540 brand-new Metal buffers for it again: 15-30k
+- * fresh MTLBuffers a second (~1000 a frame, avg 438 bytes), each a newBuffer plus a
+- * release on the game's own render threads.
++ * Off, a DynamicBuffer keeps as many retired names as it still has in flight, and at
++ * least DYN_KEEP_ELIGIBLE (64) (see the trim in allocate). A constant buffer that the
++ * game renames once per draw (Dark Souls III: ~600 draws a frame) retires ~600 names a
++ * frame; with a fixed reserve of 64, the trim freed all but 64 as soon as the GPU caught
++ * up, and the next frame minted ~540 brand-new Metal buffers for it again: 15-30k fresh
++ * MTLBuffers a second (Superposition: ~30k, a quarter of its render thread), each a
++ * newBuffer plus a release on the game's own render threads. The reserve that follows
++ * demand reuses them instead and still shrinks to 64 once a burst ends.
+  *
+  * On, an instance keeps up to max(64, min(DXMT_DYN_KEEP, DXMT_DYN_KEEP_KB*1024/length))
+  * retired names (DXMT_DYN_KEEP_KB default 4096): a 256-byte constant buffer keeps up to
+@@ -83,12 +85,17 @@ DynamicBuffer::allocate(uint64_t coherent_seq_id, bool *out_minted_fresh) {
+   Rc<BufferAllocation> ret;
+   for (;;) {
+     if (fifo.empty()) {
++      alloc_stat("DynamicBuffer miss: queue empty", 0);
+       break;
+     }
+     auto entry = fifo.front();
+     if (entry.will_free_at > coherent_seq_id) {
++      alloc_stat(fifo.size() < 8 ? "DynamicBuffer miss: front in use, queue <8"
++                 : fifo.size() < 64 ? "DynamicBuffer miss: front in use, queue 8-63"
++                                    : "DynamicBuffer miss: front in use, queue >=64", 0);
+       break;
+     }
++    alloc_stat("DynamicBuffer hit", 0);
+     ret = std::move(entry.allocation);
+     fifo.pop_front();
+     break;
+@@ -126,21 +133,27 @@ DynamicBuffer::allocate(uint64_t coherent_seq_id, bool *out_minted_fresh) {
+       g_dyn_stats[census_id_].depth.store(fifo.size(), std::memory_order_relaxed);
+   } else
+   {
+-    const bool stats = census_id_ < DYN_CENSUS_SLOTS;
+-    uint64_t en = 0, eb = 0, in_n = 0, in_b = 0, lo = ~0ull, hi = 0, dup = 0;
+-    const void *prev_seen[8] = {nullptr};
+-    unsigned pi = 0;
+-    for (const auto &e : fifo) {
+-      uint64_t bytes = e.allocation.ptr() ? e.allocation->census_bytes_ : 0;
+-      if (e.will_free_at <= coherent_seq_id) { en++; eb += bytes; }
+-      else                                   { in_n++; in_b += bytes; }
+-      if (e.will_free_at < lo) lo = e.will_free_at;
+-      if (e.will_free_at > hi) hi = e.will_free_at;
+-      for (unsigned k = 0; k < 8; k++)
+-        if (prev_seen[k] && prev_seen[k] == (const void *)e.allocation.ptr()) { dup++; break; }
+-      prev_seen[pi++ & 7] = (const void *)e.allocation.ptr();
+-    }
++    /* The per-instance statistics need a walk of the whole queue, which ran on
++     * every Map(WRITE_DISCARD): in Unigine Superposition a hot constant buffer
++     * holds thousands of entries and is mapped ~2,000 times a frame, so the walk
++     * alone was a large share of the game's render thread. It now runs only
++     * with DXMT_DYN_STATS=1 (for the census reports). */
++    static const bool walk = env::getEnvVar("DXMT_DYN_STATS") == "1";
++    const bool stats = walk && census_id_ < DYN_CENSUS_SLOTS;
+     if (stats) {
++      uint64_t en = 0, eb = 0, in_n = 0, in_b = 0, lo = ~0ull, hi = 0, dup = 0;
++      const void *prev_seen[8] = {nullptr};
++      unsigned pi = 0;
++      for (const auto &e : fifo) {
++        uint64_t bytes = e.allocation.ptr() ? e.allocation->census_bytes_ : 0;
++        if (e.will_free_at <= coherent_seq_id) { en++; eb += bytes; }
++        else                                   { in_n++; in_b += bytes; }
++        if (e.will_free_at < lo) lo = e.will_free_at;
++        if (e.will_free_at > hi) hi = e.will_free_at;
++        for (unsigned k = 0; k < 8; k++)
++          if (prev_seen[k] && prev_seen[k] == (const void *)e.allocation.ptr()) { dup++; break; }
++        prev_seen[pi++ & 7] = (const void *)e.allocation.ptr();
++      }
+       DynStat &st = g_dyn_stats[census_id_];
+       st.depth.store(fifo.size(), std::memory_order_relaxed);
+       st.eligible_n.store(en, std::memory_order_relaxed);
+@@ -159,27 +172,46 @@ DynamicBuffer::allocate(uint64_t coherent_seq_id, bool *out_minted_fresh) {
+      * ineligible entry is what makes this safe.
+      *
+      * A blanket depth cap would be a use-after-free: an entry whose
+-     * will_free_at still exceeds coherent_seq_id can be in GPU use right now. */
++     * will_free_at still exceeds coherent_seq_id can be in GPU use right now.
++     *
++     * The reserve follows demand: as many free entries as are still in flight
++     * (fenced), and at least 64. A fixed 64 freed everything else each time a
++     * submission completed, so a buffer renamed ~1,000 times per submission
++     * (Superposition: ~30,000 new MTLBuffers a second, a quarter of the render
++     * thread) recreated nearly every name. In steady use the in-flight count is
++     * what the next submissions need again; once a burst ends it falls and the
++     * reserve shrinks back to 64, which is what the trim is for.
++     *
++     * Eligible entries are a prefix, so "more than k eligible" is just "entry k
++     * is eligible": O(1) per check, O(dropped) in all, no walk. Dropping while
++     * eligible > max(64, size - eligible) means: entry 64 is eligible and so is
++     * entry size/2. */
+     enum { DYN_KEEP_ELIGIBLE = 64 };
+-    if (en > DYN_KEEP_ELIGIBLE) {
+-      uint64_t drop = en - DYN_KEEP_ELIGIBLE, freed = 0, freed_n = 0;
+-      while (drop && !fifo.empty()) {
+-        const QueueEntry &f = fifo.front();
+-        if (f.will_free_at > coherent_seq_id) break;   /* never touch fenced */
+-        freed += f.allocation.ptr() ? f.allocation->census_bytes_ : 0;
+-        freed_n++;
+-        fifo.pop_front();
+-        drop--;
+-      }
+-      if (freed_n) {
+-        trimmed_last_ = true;                  /* ml685: for trim-regret */
+-        g_trim_total_n.fetch_add(freed_n, std::memory_order_relaxed);
+-        g_trim_total_bytes.fetch_add(freed, std::memory_order_relaxed);
+-        if (stats) {
+-          DynStat &st = g_dyn_stats[census_id_];
+-          st.trimmed_n.fetch_add(freed_n, std::memory_order_relaxed);
+-          st.trimmed_bytes.fetch_add(freed, std::memory_order_relaxed);
+-        }
++    uint64_t freed = 0, freed_n = 0;
++    while (fifo.size() > 2 * DYN_KEEP_ELIGIBLE &&
++           fifo[DYN_KEEP_ELIGIBLE].will_free_at <= coherent_seq_id &&
++           fifo[fifo.size() / 2].will_free_at <= coherent_seq_id) {
++      const QueueEntry &f = fifo.front();
++      freed += f.allocation.ptr() ? f.allocation->census_bytes_ : 0;
++      freed_n++;
++      fifo.pop_front();
++    }
++    while (fifo.size() > DYN_KEEP_ELIGIBLE && fifo.size() <= 2 * DYN_KEEP_ELIGIBLE &&
++           fifo[DYN_KEEP_ELIGIBLE].will_free_at <= coherent_seq_id) {
++      /* small queue: plain 64-entry reserve, as before */
++      const QueueEntry &f = fifo.front();
++      freed += f.allocation.ptr() ? f.allocation->census_bytes_ : 0;
++      freed_n++;
++      fifo.pop_front();
++    }
++    if (freed_n) {
++      trimmed_last_ = true;                  /* ml685: for trim-regret */
++      g_trim_total_n.fetch_add(freed_n, std::memory_order_relaxed);
++      g_trim_total_bytes.fetch_add(freed, std::memory_order_relaxed);
++      if (census_id_ < DYN_CENSUS_SLOTS) {
++        DynStat &st = g_dyn_stats[census_id_];
++        st.trimmed_n.fetch_add(freed_n, std::memory_order_relaxed);
++        st.trimmed_bytes.fetch_add(freed, std::memory_order_relaxed);
+       }
+     }
+   }
+diff --git a/src/dxmt/dxmt_mem_census.cpp b/src/dxmt/dxmt_mem_census.cpp
+index 25ecfea..0864460 100644
+--- a/src/dxmt/dxmt_mem_census.cpp
++++ b/src/dxmt/dxmt_mem_census.cpp
+@@ -1,11 +1,68 @@
+ #include "dxmt_mem_census.hpp"
+ #include "log/log.hpp"
+ #include "util_madeira_switch.hpp"
++#include "util_env.hpp"
+ #include <chrono>
+ 
+ namespace dxmt {
+ 
+ MemCensus g_mem_census{};
++
++namespace {
++struct AllocSite {
++  std::atomic<const char *> site{nullptr};
++  std::atomic<uint64_t> n{0}, bytes{0};
++};
++constexpr int kAllocSites = 32;
++AllocSite g_alloc_sites[kAllocSites];
++std::atomic<int64_t> g_alloc_last_ns{0};
++
++bool
++alloc_stats_on() {
++  static const bool on = env::getEnvVar("DXMT_ALLOC_STATS") == "1";
++  return on;
++}
++} // namespace
++
++void
++alloc_stat(const char *site, uint64_t bytes) {
++  if (!alloc_stats_on())
++    return;
++  for (auto &s : g_alloc_sites) {
++    const char *cur = s.site.load(std::memory_order_relaxed);
++    if (!cur) {
++      const char *expect = nullptr;
++      if (!s.site.compare_exchange_strong(expect, site, std::memory_order_relaxed) && expect != site)
++        continue;
++      cur = site;
++    }
++    if (cur != site)
++      continue;
++    s.n.fetch_add(1, std::memory_order_relaxed);
++    s.bytes.fetch_add(bytes, std::memory_order_relaxed);
++    break;
++  }
++  int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
++                    std::chrono::steady_clock::now().time_since_epoch())
++                    .count();
++  int64_t last = g_alloc_last_ns.load(std::memory_order_relaxed);
++  if (last == 0) {
++    g_alloc_last_ns.compare_exchange_strong(last, now, std::memory_order_relaxed);
++    return;
++  }
++  if (now - last < 2000000000 || !g_alloc_last_ns.compare_exchange_strong(last, now, std::memory_order_relaxed))
++    return;
++  double secs = (now - last) / 1e9;
++  for (auto &s : g_alloc_sites) {
++    const char *name = s.site.load(std::memory_order_relaxed);
++    if (!name)
++      break;
++    uint64_t n = s.n.exchange(0, std::memory_order_relaxed), b = s.bytes.exchange(0, std::memory_order_relaxed);
++    if (n)
++      ERR("[alloc-rate] ", name, ": ", (uint64_t)(n / secs), " buffers/s, ", (uint64_t)(b / secs / 1024), " KB/s, avg ",
++          b / n, " B");
++  }
++}
+ DynStat g_dyn_stats[DYN_CENSUS_SLOTS]{};
+ BufSite g_buf_sites[BSITE_SLOTS]{};
+ LiveCount g_live_dynbuf{}, g_live_buffer{}, g_live_bufalloc{};
+diff --git a/src/dxmt/dxmt_mem_census.hpp b/src/dxmt/dxmt_mem_census.hpp
+index 32fb654..e94345a 100644
+--- a/src/dxmt/dxmt_mem_census.hpp
++++ b/src/dxmt/dxmt_mem_census.hpp
+@@ -168,6 +168,11 @@ extern LiveCount g_live_dynbuf, g_live_buffer, g_live_bufalloc;
+  * allocations that immediately followed a trim on the same instance. */
+ extern std::atomic<uint64_t> g_trim_total_n, g_trim_total_bytes, g_trim_regret;
+ 
++/* DXMT_ALLOC_STATS=1: every Metal buffer DXMT creates is counted by a fixed
++ * label for its code path, and an [alloc-rate] line every ~2 s gives the
++ * creations per second and MB per second of each. Off: one relaxed load. */
++void alloc_stat(const char *site, uint64_t bytes);
++
+ void dyn_census_report(void);
+ void buf_site_report(void);
+ 
+diff --git a/src/dxmt/dxmt_ring_bump_allocator.hpp b/src/dxmt/dxmt_ring_bump_allocator.hpp
+index 4feb972..3894237 100644
+--- a/src/dxmt/dxmt_ring_bump_allocator.hpp
++++ b/src/dxmt/dxmt_ring_bump_allocator.hpp
+@@ -261,6 +261,7 @@ public:
+     Block block{};
+     buffer_info_.length = block_size;
+     block.buffer = device_.newBuffer(buffer_info_);
++    alloc_stat("GpuPrivateBufferBlockAllocator", block_size);
+     block.gpu_address = buffer_info_.gpu_address;
+     return block;
+   };
+@@ -357,6 +358,7 @@ public:
+     info.memory.set(block.mapped_address);
+     info.length = block_size;
+     block.buffer = device_.newBuffer(info);
++    alloc_stat("StagingBufferBlockAllocator", block_size);
+     block.gpu_address = info.gpu_address;
+     block.census_bytes = block_size;                       /* ml677 */
+     block.census_owner = census_owner_;
+diff --git a/src/dxmt/dxmt_texture.cpp b/src/dxmt/dxmt_texture.cpp
+index 82a53ec..ed8100c 100644
+--- a/src/dxmt/dxmt_texture.cpp
++++ b/src/dxmt/dxmt_texture.cpp
+@@ -187,6 +187,7 @@ Texture::allocate(Flags<TextureAllocationFlag> flags) {
+     buffer_info.memory.set(wsi::aligned_malloc(bytes_per_image_, DXMT_PAGE_SIZE));
+ #endif
+     auto buffer = device_.newBuffer(buffer_info);
++    alloc_stat("Texture::allocate (linear)", bytes_per_image_);
+     auto *ta = new TextureAllocation(this, std::move(buffer), buffer_info.memory.get(), info, bytes_per_row_, flags);
+     ta->census_owner_ = MEMOWN_TEX_LINEAR;                 /* ml677 */
+     ta->census_bytes_ = bytes_per_image_;
+diff --git a/src/winemetal/unix/cache.c b/src/winemetal/unix/cache.c
+index 02fc844..80ff4bb 100644
+--- a/src/winemetal/unix/cache.c
++++ b/src/winemetal/unix/cache.c
+@@ -45,6 +45,23 @@ use_ios_cache_dir(void) {
+   return ios_wow_base() != 0;
+ }
+ 
++/* win: shaders compiled with DXMT_PRECISE_MATH=1 keep their own cache file. */
++static NSString *
++win_cache_variant(NSString *path) {
++  /* The shader translator's output changed (no reassociation by default), so shaders
++   * cached by an older build must not be reused: they get a new file name. */
++  const char *e = getenv("DXMT_PRECISE_MATH");
++  const char *r = getenv("DXMT_FAST_REASSOC");
++  if (![path hasSuffix:@".db"])
++    return path;
++  NSString *base = [path substringToIndex:path.length - 3];
++  if (e && e[0] && strcmp(e, "0"))
++    return [base stringByAppendingFormat:@"_precise%d.db", atoi(e)];
++  if (r && r[0] == '1')
++    return [base stringByAppendingString:@"_reassoc.db"];
++  return [base stringByAppendingString:@"_win2.db"];
++}
++
+ static NSString *
+ resolve_ios_cache_dir(NSString *path, bool path_is_file) {
+   if (!path.length)
+@@ -99,7 +116,7 @@ resolve_cache_dir(NSString *path, bool path_is_file) {
+     /* Opt-in diagnostics: DXMT_CACHE_STATS=1 logs hit/miss counts. */
+     const char *stats = getenv("DXMT_CACHE_STATS");
+     _stats = stats && *stats && strcmp(stats, "0");
+-    NSString *dbPath = resolve_cache_dir(path, true);
++    NSString *dbPath = resolve_cache_dir(win_cache_variant(path), true);
+     if (!dbPath) {
+       NSLog(@"[CacheReader] Failed to resolve cache path");
+       return nil;
+@@ -163,7 +180,7 @@ resolve_cache_dir(NSString *path, bool path_is_file) {
+ 
+ - (instancetype)initWithPath:(NSString *)path version:(uint64_t)version {
+   if ((self = [super init])) {
+-    NSString *dbPath = resolve_cache_dir(path, true);
++    NSString *dbPath = resolve_cache_dir(win_cache_variant(path), true);
+     if (!dbPath) {
+       NSLog(@"[CacheReader] Failed to resolve cache path");
+       return nil;
+diff --git a/src/winemetal/unix/winemetal_unix.c b/src/winemetal/unix/winemetal_unix.c
+index 8592f89..90d077f 100644
+--- a/src/winemetal/unix/winemetal_unix.c
++++ b/src/winemetal/unix/winemetal_unix.c
+@@ -93,6 +93,7 @@ extern void ios_frame_game_tick(void);
+ extern void ios_frame_encode_present(int skipped);
+ extern void ios_frame_drawable_wait(unsigned long long ns);
+ extern void ios_frame_gpu(unsigned long long gpu_ns, unsigned long long inflight);
++extern void ios_frame_gpu_span(double start_s, double end_s);
+ extern void ios_frame_note_display(int panel_hz, int intent_hz, int mode);
+ extern void ios_frame_limiter(unsigned long long ns);
+ 
+@@ -621,6 +622,8 @@ _MTLCommandBuffer_commit(void *obj) {
+       uint64_t depth = atomic_fetch_sub_explicit(&g_madeira_cmdbuf_inflight, 1, memory_order_relaxed);
+       double span = buffer.GPUEndTime - buffer.GPUStartTime;
+       ios_frame_gpu(buffer.GPUStartTime > 0.0 && span > 0.0 ? (unsigned long long)(span * 1e9) : 0, depth);
++      /* the union of these spans is the frame report's "GPU busy" */
++      ios_frame_gpu_span(buffer.GPUStartTime, buffer.GPUEndTime);
+     }];
+   }
+   if (atomic_load_explicit(&g_madeira_gpu_meter, memory_order_relaxed))
+@@ -4628,10 +4631,47 @@ _ReleaseMetalView(void *obj) {
+   return STATUS_SUCCESS;
+ }
+ 
++/* win: DXMT_SHADER_DUMP=<folder> writes every shader's DXBC to
++ * <Documents>/wine/drive_c/<folder>/<fnv64>.dxbc ("1" means "shaders"), for debugging a
++ * game's rendering. */
++static void
++win_dump_shader(const void *bytecode, size_t size) {
++  static int on = -1;
++  static char dir[1024];
++  if (on < 0) {
++    const char *flag = getenv("DXMT_SHADER_DUMP");
++    const char *docs = getenv("MADEIRA_DOCS_DIR");
++    char fallback[1024];
++    on = flag && flag[0] && strcmp(flag, "0") != 0 && !strchr(flag, '/') && !strstr(flag, "..");
++    if (on && !(docs && *docs)) {
++      const char *home = getenv("CFFIXED_USER_HOME");
++      snprintf(fallback, sizeof fallback, "%s/Documents", home ? home : "");
++      docs = fallback;
++    }
++    if (on) {
++      snprintf(dir, sizeof dir, "%s/wine/drive_c/%s", docs, strcmp(flag, "1") ? flag : "shaders");
++      mkdir(dir, 0755);
++      fprintf(stderr, "[win] dumping shaders to %s\n", dir);
++    }
++  }
++  if (!on || !bytecode || !size) return;
++  uint64_t hash = 0xcbf29ce484222325ull;
++  for (size_t i = 0; i < size; i++) hash = (hash ^ ((const uint8_t *)bytecode)[i]) * 0x100000001b3ull;
++  char path[1100];
++  snprintf(path, sizeof path, "%s/%016llx.dxbc", dir, (unsigned long long)hash);
++  if (access(path, F_OK) == 0) return;
++  FILE *f = fopen(path, "wb");
++  if (!f) return;
++  fwrite(bytecode, 1, size, f);
++  fclose(f);
++}
++
+ static NTSTATUS
+ thunk_SM50Initialize(void *args) {
+   struct sm50_initialize_params *params = args;
+ 
++  win_dump_shader(params->bytecode, params->bytecode_size);
++
+   params->ret =
+       SM50Initialize(params->bytecode, params->bytecode_size, params->shader, params->reflection, params->error);
+ 

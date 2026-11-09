@@ -1,0 +1,297 @@
+Changes to Madeira itself (third_party/madeira). Applied by scripts/apply-patches.sh.
+
+- build/ntdll-unix/virtual_ios.c: 32-bit stacks grow again. The WOW_TEB stack limits are guest
+  addresses, so a guard page fault (host address) is compared after adding the base of the
+  thread's 4 GB window, on both the signal and the Mach exception path. [wow-stack-ovf] prints
+  what filled a 32-bit stack when one overflows.
+- build/ntdll-unix/signal_arm64_ios.c: a store by native code (outside the JIT pool) into an RWX
+  page that FEX write-trapped for self-modifying code completes through the alias, as Windows
+  lets a syscall write such a page. It used to wreck the thread (32-bit wrap_glGetError).
+- build/ntdll-unix/thread_ios.c: [bad-stack] diagnostic line next to "Exception frame is not
+  in stack limits"; no behaviour change.
+- app/Madeira/WineProcessBridge.m: MADEIRA_VULKAN_DEFAULT, the Vulkan choice when madeira.cfg
+  has none (the app sets moltenvk).
+- app/Madeira/Winios/WiniosGL.m: the OpenGL presenter marks the game's window as presenting
+  through Metal, so its empty GDI frame no longer covers the picture.
+
+diff --git a/app/Madeira/WineProcessBridge.m b/app/Madeira/WineProcessBridge.m
+index 968071f..0aacfa2 100644
+--- a/app/Madeira/WineProcessBridge.m
++++ b/app/Madeira/WineProcessBridge.m
+@@ -924,6 +924,14 @@ static BOOL madeira_d3d12_vkd3d_wanted(void)
+     char v[512] = "";
+     BOOL set = madeira_cfg_get("vulkan", v, sizeof v) && v[0];
+ 
++    /* MADEIRA_VULKAN_DEFAULT: the value used when madeira.cfg has no `vulkan`
++     * key, so a front end can turn Vulkan on by default (the win app sets
++     * moltenvk) while a madeira.cfg line still wins. */
++    if (!set) {
++        const char *dflt = getenv("MADEIRA_VULKAN_DEFAULT");
++        if (dflt && *dflt) { strlcpy(v, dflt, sizeof v); set = YES; }
++    }
++
+     if (set && (!strcasecmp(v, "off") || !strcmp(v, "0"))) return nil;
+     if (!set && !madeira_d3d12_vkd3d_wanted() && !madeira_d3d11_dxvk_wanted()) return nil;
+     if (set && (!strcasecmp(v, "static") || !strcmp(v, "1")))
+diff --git a/app/Madeira/Winios/WiniosGL.m b/app/Madeira/Winios/WiniosGL.m
+index 75e3330..eb626f5 100644
+--- a/app/Madeira/Winios/WiniosGL.m
++++ b/app/Madeira/Winios/WiniosGL.m
+@@ -283,6 +283,7 @@ static BOOL pipeline_ensure(MadeiraGLPresenter *p, MTLPixelFormat format) {
+ static _Atomic uint64_t gl_present_count;
+ extern uint64_t madeira_get_present_count(void);
+ extern void madeira_frame_mark(const void *layer);   // Winios.m: the overlay's frame times
++extern void winios_note_game_metal_hwnd(void *hwnd);   // Winios.m: the game window presents through Metal
+ 
+ uint64_t madeira_frame_count(void) {
+     return madeira_get_present_count() + atomic_load_explicit(&gl_present_count, memory_order_relaxed);
+@@ -301,6 +302,12 @@ uint64_t madeira_frame_count(void) {
+         p->queue.label = @"winios-gl present";
+         *state = (void *)CFBridgingRetain(p);
+         GLLOG("presenter for hwnd %p on layer %p", hwnd, (__bridge void *)layer);
++        // Game session: the layer is the shared full-screen one, as for a DXMT
++        // swapchain, so the window has to be marked the way DXMT's view creation
++        // does (IOSDisplayShim.m). Otherwise the compositor keeps drawing its GDI
++        // surface, an empty framed window, on top of the GL picture.
++        const char *desktop = getenv("MADEIRA_DESKTOP");
++        if (!(desktop && desktop[0] == '1')) winios_note_game_metal_hwnd(hwnd);
+     }
+     if (!p->layer.device) p->layer.device = p->device;
+     return p;
+diff --git a/build/ntdll-unix/signal_arm64_ios.c b/build/ntdll-unix/signal_arm64_ios.c
+index ed0e3be..ba80247 100644
+--- a/build/ntdll-unix/signal_arm64_ios.c
++++ b/build/ntdll-unix/signal_arm64_ios.c
+@@ -5188,6 +5188,26 @@ static void *ios_mach_exception_thread( void *arg )
+                         dprintf( 2, "[alias-protection] completing FEX handler write pc=%llx addr=%llx\n",
+                                  (unsigned long long)fault_pc, (unsigned long long)fault_addr );
+                 }
++                /* A store by NATIVE code -- Wine's unix side or a system library it
++                 * called, i.e. any pc outside the JIT pool -- has no guest context to
++                 * deliver a fault to: it runs inside a syscall or unix call, and the
++                 * exception dispatched from there wrecked the thread (2026-11-06: a
++                 * 32-bit wrap_glGetError storing its result into a parameter block on
++                 * an RWX heap page that FEX had write-trapped for SMC detection; the
++                 * main thread's pc became ASCII and it died holding FEX's
++                 * ThreadCreationMutex, so the game hung). Windows lets a syscall write
++                 * an RWX page, and file reads into these pages already land through
++                 * the alias ([kw-alias]), so the store completes the same way. */
++                if (rw_addr && honor_guest_prot && ios_alias_write_is_trapped( fault_addr ) &&
++                    !in_jit && !(rx && sz && (uintptr_t)fault_pc >= rx && (uintptr_t)fault_pc < rx + sz) &&
++                    !ios_jit_low_contains( (uintptr_t)fault_pc ))
++                {
++                    static unsigned native_alias_logs;
++                    honor_guest_prot = 0;
++                    if (native_alias_logs++ < 16)
++                        dprintf( 2, "[alias-protection] completing native write pc=%llx addr=%llx through the alias\n",
++                                 (unsigned long long)fault_pc, (unsigned long long)fault_addr );
++                }
+                 if (rw_addr && honor_guest_prot && ios_alias_write_is_trapped( fault_addr ))
+                 {
+                     static unsigned trapped_alias_logs;
+diff --git a/build/ntdll-unix/thread_ios.c b/build/ntdll-unix/thread_ios.c
+index 559c8dd..0e0ba2d 100644
+--- a/build/ntdll-unix/thread_ios.c
++++ b/build/ntdll-unix/thread_ios.c
+@@ -2764,7 +2764,19 @@ NTSTATUS WINAPI NtRaiseException( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL
+     }
+ 
+     if (rec->ExceptionFlags & EXCEPTION_STACK_INVALID)
++    {
++        /* iOS-Madeira DIAGNOSTIC (no behaviour change): the 32-bit SEH frame
++         * that failed Wine's own is_valid_frame() is the head of the 32-bit
++         * TEB's ExceptionList. Print it next to the 32-bit stack limits so the
++         * placement defect can be named from the log. */
++        WOW_TEB *wow_teb = get_wow_teb( NtCurrentTeb() );
++        if (wow_teb)
++            ERR_(seh)("[bad-stack] teb32=%p exc_list=%08lx base=%08lx limit=%08lx addr=%p\n",
++                      wow_teb, (unsigned long)wow_teb->Tib.ExceptionList,
++                      (unsigned long)wow_teb->Tib.StackBase,
++                      (unsigned long)wow_teb->Tib.StackLimit, rec->ExceptionAddress);
+         ERR_(seh)("Exception frame is not in stack limits => unable to dispatch exception.\n");
++    }
+     else if (rec->ExceptionCode == STATUS_NONCONTINUABLE_EXCEPTION)
+         ERR_(seh)("Process attempted to continue execution after noncontinuable exception.\n");
+     else
+diff --git a/build/ntdll-unix/virtual_ios.c b/build/ntdll-unix/virtual_ios.c
+index 06cd0d1..961cea5 100644
+--- a/build/ntdll-unix/virtual_ios.c
++++ b/build/ntdll-unix/virtual_ios.c
+@@ -29541,8 +29541,98 @@ struct thread_stack_info
+     char  *end;
+     SIZE_T guaranteed;
+     BOOL   is_wow;
++    ULONG_PTR wow_base;   /* B of the window the 32-bit stack values are relative to */
+ };
+ 
++/* [wow-stack-grow] The WOW_TEB stack fields are GUEST addresses (thread_ios.c
++ * stores them with ios_wow_guest_addr), while fault addresses are HOST
++ * addresses, B + guest.  Comparing the two never matched, so a fault on the
++ * 32-bit stack's guard page was treated as "not a thread stack": the page was
++ * committed with STATUS_GUARD_PAGE_VIOLATION but Tib.StackLimit never moved,
++ * and once the SEH chain sat below the stale limit RtlUnwind/RtlDispatchException
++ * rejected it and the process died with STATUS_BAD_STACK.  B comes from the
++ * window the TEB lives in (it is in its own process's window), so this is also
++ * right on the Mach exception-server thread, which has no pseudo-process. */
++static ULONG_PTR ios_wow_stack_base_for_teb( TEB *teb )
++{
++#ifdef WINE_IOS
++    struct ios_wow_window *slot = ios_wow_live_slot_for_addr( teb );
++    return slot ? slot->base : 0;
++#else
++    return 0;
++#endif
++}
++
++static BOOL is_inside_wow_thread_stack( void *ptr, struct thread_stack_info *stack, TEB *teb )
++{
++    WOW_TEB *wow_teb = get_wow_teb( teb );
++    size_t min_guaranteed = max( page_size, host_page_size );
++    ULONG_PTR base;
++
++    if (!wow_teb || !wow_teb->DeallocationStack) return FALSE;
++    base = ios_wow_stack_base_for_teb( teb );
++    stack->wow_base = base;
++    stack->start = (char *)base + wow_teb->DeallocationStack;
++    stack->limit = (char *)base + wow_teb->Tib.StackLimit;
++    stack->end   = (char *)base + wow_teb->Tib.StackBase;
++    stack->guaranteed = max( wow_teb->GuaranteedStackBytes, min_guaranteed );
++    stack->is_wow = TRUE;
++    return ((char *)ptr > stack->start && (char *)ptr <= stack->end);
++}
++
++/* [wow-stack-ovf] once per session: what filled a 32-bit stack.  Prints the
++ * most frequent code-looking dwords over the whole stack (a recursion cycle or
++ * a per-call leak shows up as a few return addresses repeated thousands of
++ * times) and the words around the faulting address.  dprintf only: this can run
++ * on the Mach exception-server thread. */
++static void ios_wow_stack_overflow_report( const void *addr, const struct thread_stack_info *si )
++{
++    static int reported;
++    static ULONG vals[4096];
++    static unsigned int cnt[4096];
++    const ULONG *p, *lo, *hi;
++    unsigned int i, j, k;
++
++    if (reported++) return;
++    memset( vals, 0, sizeof(vals) );
++    memset( cnt, 0, sizeof(cnt) );
++    lo = (const ULONG *)(ROUND_ADDR( addr, host_page_mask ) + host_page_size);
++    hi = (const ULONG *)si->end;
++    dprintf( 2, "[wow-stack-ovf] 32-bit stack overflow: fault %p, B=%p, guest stack %08lx..%08lx, scanning %08lx..%08lx\n",
++             addr, (void *)si->wow_base, (unsigned long)(si->start - (char *)si->wow_base),
++             (unsigned long)(si->end - (char *)si->wow_base),
++             (unsigned long)((char *)lo - (char *)si->wow_base), (unsigned long)((char *)hi - (char *)si->wow_base) );
++    for (p = lo; p < hi; p++)
++    {
++        ULONG v = *p;
++        if (v < 0x401000 || v >= 0x80000000) continue;
++        k = (v * 2654435761u) >> 20;
++        for (j = 0; j < 4096; j++, k = (k + 1) & 4095)
++        {
++            if (!vals[k]) { vals[k] = v; cnt[k] = 1; break; }
++            if (vals[k] == v) { cnt[k]++; break; }
++        }
++    }
++    for (i = 0; i < 24; i++)
++    {
++        unsigned int best = 0, bi = 0;
++        for (j = 0; j < 4096; j++) if (cnt[j] > best) { best = cnt[j]; bi = j; }
++        if (best < 64) break;
++        dprintf( 2, "[wow-stack-ovf]   top %2u: %08x x%u\n", i, (unsigned)vals[bi], best );
++        cnt[bi] = 0;
++    }
++    for (i = 0; i < 64 && lo + i * 4 + 4 <= hi; i++)
++        dprintf( 2, "[wow-stack-ovf]   %08lx: %08x %08x %08x %08x\n",
++                 (unsigned long)((char *)(lo + i * 4) - (char *)si->wow_base),
++                 (unsigned)lo[i * 4], (unsigned)lo[i * 4 + 1], (unsigned)lo[i * 4 + 2], (unsigned)lo[i * 4 + 3] );
++}
++
++static void set_wow_stack_limit( TEB *teb, struct thread_stack_info *stack_info, char *page )
++{
++    WOW_TEB *wow_teb = get_wow_teb( teb );
++    if (wow_teb) wow_teb->Tib.StackLimit = (ULONG)((ULONG_PTR)page - stack_info->wow_base);
++}
++
+ /***********************************************************************
+  *           is_inside_thread_stack
+  */
+@@ -29557,15 +29647,11 @@ static BOOL is_inside_thread_stack( void *ptr, struct thread_stack_info *stack )
+     stack->end   = teb->Tib.StackBase;
+     stack->guaranteed = max( teb->GuaranteedStackBytes, min_guaranteed );
+     stack->is_wow = FALSE;
++    stack->wow_base = 0;
+     if ((char *)ptr > stack->start && (char *)ptr <= stack->end) return TRUE;
+ 
+     if (!wow_teb) return FALSE;
+-    stack->start = ULongToPtr( wow_teb->DeallocationStack );
+-    stack->limit = ULongToPtr( wow_teb->Tib.StackLimit );
+-    stack->end   = ULongToPtr( wow_teb->Tib.StackBase );
+-    stack->guaranteed = max( wow_teb->GuaranteedStackBytes, min_guaranteed );
+-    stack->is_wow = TRUE;
+-    return ((char *)ptr > stack->start && (char *)ptr <= stack->end);
++    return is_inside_wow_thread_stack( ptr, stack, teb );
+ }
+ 
+ 
+@@ -29590,11 +29676,7 @@ static NTSTATUS grow_thread_stack( char *page, struct thread_stack_info *stack_i
+         mprotect_range( page, stack_info->guaranteed, 0, 0 );
+         ret = STATUS_STACK_OVERFLOW;
+     }
+-    if (stack_info->is_wow)
+-    {
+-        WOW_TEB *wow_teb = get_wow_teb( NtCurrentTeb() );
+-        wow_teb->Tib.StackLimit = PtrToUlong( page );
+-    }
++    if (stack_info->is_wow) set_wow_stack_limit( NtCurrentTeb(), stack_info, page );
+     else NtCurrentTeb()->Tib.StackLimit = page;
+     return ret;
+ }
+@@ -29632,7 +29714,11 @@ NTSTATUS virtual_handle_fault( EXCEPTION_RECORD *rec, void *stack )
+             mprotect_range( page, host_page_size, 0, 0 );
+             ret = STATUS_GUARD_PAGE_VIOLATION;
+         }
+-        else ret = grow_thread_stack( page, &stack_info );
++        else
++        {
++            ret = grow_thread_stack( page, &stack_info );
++            if (ret == STATUS_STACK_OVERFLOW && stack_info.is_wow) ios_wow_stack_overflow_report( addr, &stack_info );
++        }
+     }
+     else if (err == EXCEPTION_WRITE_FAULT)
+     {
+@@ -29964,7 +30050,10 @@ static BOOL is_inside_thread_stack_teb( void *ptr, struct thread_stack_info *sta
+     stack->end   = teb->Tib.StackBase;
+     stack->guaranteed = max( teb->GuaranteedStackBytes, min_guaranteed );
+     stack->is_wow = FALSE;
+-    return ((char *)ptr > stack->start && (char *)ptr <= stack->end);
++    stack->wow_base = 0;
++    if ((char *)ptr > stack->start && (char *)ptr <= stack->end) return TRUE;
++    /* [wow-stack-grow] a 32-bit guest thread's guard page faults here too */
++    return is_inside_wow_thread_stack( ptr, stack, teb );
+ }
+ 
+ static NTSTATUS grow_thread_stack_teb( char *page, struct thread_stack_info *stack_info, TEB *teb )
+@@ -29985,7 +30074,8 @@ static NTSTATUS grow_thread_stack_teb( char *page, struct thread_stack_info *sta
+         mprotect_range( page, stack_info->guaranteed, 0, 0 );
+         ret = STATUS_STACK_OVERFLOW;
+     }
+-    teb->Tib.StackLimit = page;
++    if (stack_info->is_wow) set_wow_stack_limit( teb, stack_info, page );
++    else teb->Tib.StackLimit = page;
+     return ret;
+ }
+ 
+@@ -30056,7 +30146,11 @@ NTSTATUS ios_virtual_handle_fault_for_thread( EXCEPTION_RECORD *rec, TEB *teb )
+             mprotect_range( page, host_page_size, 0, 0 );
+             ret = STATUS_GUARD_PAGE_VIOLATION;
+         }
+-        else ret = grow_thread_stack_teb( page, &stack_info, teb );
++        else
++        {
++            ret = grow_thread_stack_teb( page, &stack_info, teb );
++            if (ret == STATUS_STACK_OVERFLOW && stack_info.is_wow) ios_wow_stack_overflow_report( addr, &stack_info );
++        }
+     }
+     else if (err == EXCEPTION_WRITE_FAULT)
+     {

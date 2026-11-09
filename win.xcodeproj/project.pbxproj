@@ -1,0 +1,682 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A5358844309CE3DD00A12248 /* winJITHelper.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A5358841309CE3DD00A12248 /* winJITHelper.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A535884E309CE3DD00A12248 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A535880B309CE3DD00A12248 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A5358845309CE3DD00A12248;
+			remoteInfo = winJITHelper;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A535884C309CE3DD00A12248 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A5358844309CE3DD00A12248 /* winJITHelper.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A5358813309CE3DD00A12248 /* win.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = win.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5358841309CE3DD00A12248 /* winJITHelper.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = winJITHelper.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A5358843309CE3DD00A12248 /* Exceptions for "winJITHelper" folder in "winJITHelper" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A5358845309CE3DD00A12248 /* winJITHelper */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A5358815309CE3DD00A12248 /* win */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = win;
+			sourceTree = "<group>";
+		};
+		A5358842309CE3DD00A12248 /* winJITHelper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A5358843309CE3DD00A12248 /* Exceptions for "winJITHelper" folder in "winJITHelper" target */,
+			);
+			path = winJITHelper;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A5358810309CE3DD00A12248 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A5358847309CE3DD00A12248 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A535880A309CE3DD00A12248 = {
+			isa = PBXGroup;
+			children = (
+				A5358815309CE3DD00A12248 /* win */,
+				A5358842309CE3DD00A12248 /* winJITHelper */,
+				A5358814309CE3DD00A12248 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A5358814309CE3DD00A12248 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A5358813309CE3DD00A12248 /* win.app */,
+				A5358841309CE3DD00A12248 /* winJITHelper.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A5358812309CE3DD00A12248 /* win */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A535881E309CE3DD00A12248 /* Build configuration list for PBXNativeTarget "win" */;
+			buildPhases = (
+				A535880F309CE3DD00A12248 /* Sources */,
+				A5358810309CE3DD00A12248 /* Frameworks */,
+				A5358811309CE3DD00A12248 /* Resources */,
+				A5358830309CE3DD00A12248 /* Bundle Wine runtime */,
+				A535884C309CE3DD00A12248 /* Embed App Extensions */,
+				A535884F309CE3DD00A12248 /* Embed StikJIT */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A535884D309CE3DD00A12248 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A5358815309CE3DD00A12248 /* win */,
+			);
+			name = win;
+			packageProductDependencies = (
+			);
+			productName = win;
+			productReference = A5358813309CE3DD00A12248 /* win.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A5358845309CE3DD00A12248 /* winJITHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A5358849309CE3DD00A12248 /* Build configuration list for PBXNativeTarget "winJITHelper" */;
+			buildPhases = (
+				A5358846309CE3DD00A12248 /* Sources */,
+				A5358847309CE3DD00A12248 /* Frameworks */,
+				A5358848309CE3DD00A12248 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A5358842309CE3DD00A12248 /* winJITHelper */,
+			);
+			name = winJITHelper;
+			packageProductDependencies = (
+			);
+			productName = winJITHelper;
+			productReference = A5358841309CE3DD00A12248 /* winJITHelper.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A535880B309CE3DD00A12248 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					A5358812309CE3DD00A12248 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					A5358845309CE3DD00A12248 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = A535880E309CE3DD00A12248 /* Build configuration list for PBXProject "win" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A535880A309CE3DD00A12248;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A5358814309CE3DD00A12248 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A5358812309CE3DD00A12248 /* win */,
+				A5358845309CE3DD00A12248 /* winJITHelper */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A5358811309CE3DD00A12248 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A5358848309CE3DD00A12248 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A5358830309CE3DD00A12248 /* Bundle Wine runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle Wine runtime";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nSRC=\"$SRCROOT/third_party/madeira/app/Madeira\"\nDEST=\"$TARGET_BUILD_DIR/$WRAPPER_NAME\"\n# NVAPI is left out: here it can only answer \"no NVIDIA GPU\", a path real PCs never take\n# (without an NVIDIA card the DLL does not exist), and Superposition crashed on it.\n# i386-windows is the 32-bit (WoW64) DLL set from build/wine-i386/build.sh; without its\n# ntdll.dll the app treats 32-bit programs as unsupported.\nrsync -a --delete --delete-excluded --exclude nvapi64.dll --exclude nvapi.dll --exclude .gitkeep \"$SRC/aarch64-windows\" \"$SRC/arm64ec-windows\" \"$SRC/i386-windows\" \"$SRC/nls\" \"$DEST/\"\ncp \"$SRC/prefix-template.tar.gz\" \"$DEST/\"\n# gl/: Mesa's OSMesa with Zink (desktop OpenGL) and MoltenVK (Vulkan on Metal), from\n# tools/build/prepare-graphics.sh moltenvk|zink. vulkan/: winevulkan.dll and vulkan-1.dll.\n# Madeira's launcher picks Zink and turns Vulkan on when these are present.\nfor d in gl vulkan; do if [ -d \"$SRC/$d\" ]; then rsync -a --delete \"$SRC/$d\" \"$DEST/\"; fi; done\n# dyld only loads a dylib whose own signature is valid; the app's signature seals but does\n# not re-sign loose dylibs, so each is signed with this build's identity.\nfor DYLIB in \"$DEST\"/gl/*.dylib; do\n  [ -f \"$DYLIB\" ] || continue\n  if [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ] && [ \"$CODE_SIGNING_ALLOWED\" != \"NO\" ]; then\n    codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --timestamp=none \"$DYLIB\"\n  else\n    codesign --force --sign - \"$DYLIB\"\n  fi\ndone\ncp \"$SRC/madeira-jit.js\" \"$DEST/\"\nGUEST=\"$SRCROOT/build/guest\"\nfor exe in \"$GUEST\"/*-x64.exe; do if [ -f \"$exe\" ]; then cp \"$exe\" \"$DEST/arm64ec-windows/\"; fi; done\nfor exe in \"$GUEST\"/*-arm64.exe; do if [ -f \"$exe\" ]; then cp \"$exe\" \"$DEST/aarch64-windows/\"; fi; done\nfor exe in \"$GUEST\"/*-x86.exe; do if [ -f \"$exe\" ]; then cp \"$exe\" \"$DEST/i386-windows/\"; fi; done\n";
+		};
+		A535884F309CE3DD00A12248 /* Embed StikJIT */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Embed StikJIT";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n# StikJIT goes in win.app/Frameworks, which the JIT helper loads through\n# @executable_path/../../Frameworks, as Madeira does.\nSRC=\"$SRCROOT/third_party/madeira/app/Frameworks/StikJIT.xcframework/ios-arm64/StikJIT.framework\"\nDST=\"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/StikJIT.framework\"\nrm -rf \"$DST\"\nmkdir -p \"$(dirname \"$DST\")\"\nditto \"$SRC\" \"$DST\"\n# The framework ships without the Info.plist an embedded framework needs.\nif [ ! -f \"$DST/Info.plist\" ]; then\n  P=\"$DST/Info.plist\"\n  /usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string StikJIT' -c \"Add :CFBundleIdentifier string $PRODUCT_BUNDLE_IDENTIFIER.StikJIT\" -c 'Add :CFBundleName string StikJIT' -c 'Add :CFBundlePackageType string FMWK' -c 'Add :CFBundleInfoDictionaryVersion string 6.0' -c 'Add :CFBundleShortVersionString string 1.0' -c 'Add :CFBundleVersion string 1' -c 'Add :CFBundleSupportedPlatforms array' -c 'Add :CFBundleSupportedPlatforms:0 string iPhoneOS' -c 'Add :MinimumOSVersion string 26.0' \"$P\" >/dev/null\n  plutil -convert binary1 \"$P\"\nfi\nif [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ] && [ \"$CODE_SIGNING_ALLOWED\" != \"NO\" ]; then\n  codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --timestamp=none \"$DST\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A535880F309CE3DD00A12248 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A5358846309CE3DD00A12248 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A535884D309CE3DD00A12248 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A5358845309CE3DD00A12248 /* winJITHelper */;
+			targetProxy = A535884E309CE3DD00A12248 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A535881C309CE3DD00A12248 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = BN4ZCSW298;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A535881D309CE3DD00A12248 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = BN4ZCSW298;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A535881F309CE3DD00A12248 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = win.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BN4ZCSW298;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/third_party/madeira/app/Madeira",
+					"$(SRCROOT)/third_party/madeira/build",
+					"$(SRCROOT)/third_party/madeira",
+				);
+				INFOPLIST_FILE = "win-Info.plist";
+				INFOPLIST_KEY_GCSupportsGameMode = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "win connects to this iPhone through LocalDevVPN to enable JIT without a Mac.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(SRCROOT)/third_party/madeira/app/Madeira",
+					"-lntdll_unix",
+					"-lwineserver",
+					"-lwin32u_unix",
+					"-ldxmt_combined",
+					"-lsqlite3",
+					"-lgnutls",
+					"-lnettle",
+					"-lhogweed",
+					"-lgmp",
+					"-lavformat",
+					"-lavcodec",
+					"-lavutil",
+					"-lswresample",
+					"-lz",
+					"-lc++",
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					CoreText,
+					"-framework",
+					CoreGraphics,
+					"-framework",
+					IOKit,
+					"-framework",
+					IOSurface,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalFX,
+					"-framework",
+					OpenGLES,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					AVFAudio,
+					"-framework",
+					CoreAudio,
+					"-framework",
+					CoreMedia,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					VideoToolbox,
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = winnny.win;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "win/win-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A5358820309CE3DD00A12248 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = win.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BN4ZCSW298;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/third_party/madeira/app/Madeira",
+					"$(SRCROOT)/third_party/madeira/build",
+					"$(SRCROOT)/third_party/madeira",
+				);
+				INFOPLIST_FILE = "win-Info.plist";
+				INFOPLIST_KEY_GCSupportsGameMode = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "win connects to this iPhone through LocalDevVPN to enable JIT without a Mac.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(SRCROOT)/third_party/madeira/app/Madeira",
+					"-lntdll_unix",
+					"-lwineserver",
+					"-lwin32u_unix",
+					"-ldxmt_combined",
+					"-lsqlite3",
+					"-lgnutls",
+					"-lnettle",
+					"-lhogweed",
+					"-lgmp",
+					"-lavformat",
+					"-lavcodec",
+					"-lavutil",
+					"-lswresample",
+					"-lz",
+					"-lc++",
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					CoreText,
+					"-framework",
+					CoreGraphics,
+					"-framework",
+					IOKit,
+					"-framework",
+					IOSurface,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalFX,
+					"-framework",
+					OpenGLES,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					AVFAudio,
+					"-framework",
+					CoreAudio,
+					"-framework",
+					CoreMedia,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					VideoToolbox,
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = winnny.win;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "win/win-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A535884A309CE3DD00A12248 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BN4ZCSW298;
+				ENABLE_DEBUG_DYLIB = NO;
+				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/third_party/madeira/app/Frameworks/StikJIT.xcframework/ios-arm64";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = winJITHelper/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					StikJIT,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = winnny.win.JITHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A535884B309CE3DD00A12248 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BN4ZCSW298;
+				ENABLE_DEBUG_DYLIB = NO;
+				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/third_party/madeira/app/Frameworks/StikJIT.xcframework/ios-arm64";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = winJITHelper/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					StikJIT,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = winnny.win.JITHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A535880E309CE3DD00A12248 /* Build configuration list for PBXProject "win" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A535881C309CE3DD00A12248 /* Debug */,
+				A535881D309CE3DD00A12248 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A535881E309CE3DD00A12248 /* Build configuration list for PBXNativeTarget "win" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A535881F309CE3DD00A12248 /* Debug */,
+				A5358820309CE3DD00A12248 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A5358849309CE3DD00A12248 /* Build configuration list for PBXNativeTarget "winJITHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A535884A309CE3DD00A12248 /* Debug */,
+				A535884B309CE3DD00A12248 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A535880B309CE3DD00A12248 /* Project object */;
+}

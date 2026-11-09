@@ -1,0 +1,7 @@
+# Outputs and local files
+/build/
+/build-logs/
+
+xcuserdata/
+*.xcuserstate
+.DS_Store
